@@ -189,6 +189,72 @@ class ServerController extends Controller
         }
 
         try {
+            // Check if it's a ban command
+            if (str_starts_with(strtolower($command), 'ban ')) {
+                // Parse the ban command
+                $parts = explode(' ', $command);
+                if (count($parts) >= 2) {
+                    $playerName = $parts[1];
+                    $reason = count($parts) > 2 ? implode(' ', array_slice($parts, 2)) : 'No reason provided';
+
+                    // Get player UUID from the server
+                    $response = Http::get("https://api.minetools.eu/uuid/{$playerName}");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        if (isset($data['id'])) {
+                            // Store the banned player
+                            $server->bannedPlayers()->create([
+                                'uuid' => $data['id'],
+                                'username' => $playerName,
+                                'reason' => $reason
+                            ]);
+                        }
+                    }
+                }
+            }
+            // Check if it's a kick command
+            else if (str_starts_with(strtolower($command), 'kick ')) {
+                // Parse the kick command
+                $parts = explode(' ', $command);
+                if (count($parts) >= 2) {
+                    $playerName = $parts[1];
+                    $reason = count($parts) > 2 ? implode(' ', array_slice($parts, 2)) : 'No reason provided';
+
+                    // Get player UUID from the server
+                    $response = Http::get("https://api.minetools.eu/uuid/{$playerName}");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        if (isset($data['id'])) {
+                            // Store the kicked player
+                            $server->kickedPlayers()->create([
+                                'uuid' => $data['id'],
+                                'username' => $playerName,
+                                'reason' => $reason
+                            ]);
+                        }
+                    }
+                }
+            }
+            // Check if it's a pardon command
+            else if (str_starts_with(strtolower($command), 'pardon ')) {
+                $parts = explode(' ', $command);
+                if (count($parts) >= 2) {
+                    $playerName = $parts[1];
+                    
+                    // Get player UUID from the server
+                    $response = Http::get("https://api.minetools.eu/uuid/{$playerName}");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        if (isset($data['id'])) {
+                            // Remove the ban
+                            $server->bannedPlayers()
+                                ->where('uuid', $data['id'])
+                                ->delete();
+                        }
+                    }
+                }
+            }
+
             $ssh = new SSH2('broncofanclub.nl');
             
             // Load the private key
@@ -205,6 +271,34 @@ class ServerController extends Controller
             return response()->json(['message' => 'Command sent successfully']);
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to send command: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function unbanPlayer($serverId, $uuid)
+    {
+        $server = Server::findOrFail($serverId);
+
+        // Check if the requesting user owns this server
+        if (auth()->id() != $server->user_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            // Remove the ban
+            $deleted = $server->bannedPlayers()
+                ->where('uuid', $uuid)
+                ->delete();
+
+            if ($deleted) {
+                return response()->json(['message' => 'Player unbanned successfully']);
+            } else {
+                return response()->json(['message' => 'Player was not banned'], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to unban player',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -248,6 +342,88 @@ class ServerController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to get players: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function getBannedPlayers($serverId)
+    {
+        $server = Server::findOrFail($serverId);
+
+        // Check if the requesting user owns this server
+        if (auth()->id() != $server->user_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            $bannedPlayers = $server->bannedPlayers()
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // For each banned player, try to get their current username
+            $bannedPlayersWithCurrentNames = $bannedPlayers->map(function ($bannedPlayer) {
+                try {
+                    $response = Http::get("https://api.minetools.eu/profile/{$bannedPlayer->uuid}");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        $bannedPlayer->current_username = $data['name'] ?? $bannedPlayer->username;
+                    } else {
+                        $bannedPlayer->current_username = $bannedPlayer->username;
+                    }
+                } catch (\Exception $e) {
+                    $bannedPlayer->current_username = $bannedPlayer->username;
+                }
+                return $bannedPlayer;
+            });
+
+            return response()->json([
+                'banned_players' => $bannedPlayersWithCurrentNames
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to get banned players',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getKickedPlayers($serverId)
+    {
+        $server = Server::findOrFail($serverId);
+
+        // Check if the requesting user owns this server
+        if (auth()->id() != $server->user_id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            $kickedPlayers = $server->kickedPlayers()
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // For each kicked player, try to get their current username
+            $kickedPlayersWithCurrentNames = $kickedPlayers->map(function ($kickedPlayer) {
+                try {
+                    $response = Http::get("https://api.minetools.eu/profile/{$kickedPlayer->uuid}");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        $kickedPlayer->current_username = $data['name'] ?? $kickedPlayer->username;
+                    } else {
+                        $kickedPlayer->current_username = $kickedPlayer->username;
+                    }
+                } catch (\Exception $e) {
+                    $kickedPlayer->current_username = $kickedPlayer->username;
+                }
+                return $kickedPlayer;
+            });
+
+            return response()->json([
+                'kicked_players' => $kickedPlayersWithCurrentNames
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to get kicked players',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 } 

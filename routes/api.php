@@ -32,6 +32,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/server/{server_id}/log', [ServerController::class, 'getLog']);
     Route::post('/server/{server_id}/command/{command}', [ServerController::class, 'sendCommand']);
     Route::post('/server/{server_id}/players', [ServerController::class, 'getPlayers']);
+    Route::post('/server/{server_id}/banned', [ServerController::class, 'getBannedPlayers']);
+    Route::delete('/server/{server_id}/banned/{uuid}', [ServerController::class, 'unbanPlayer']);
+    Route::post('/server/{serverId}/banned', [ServerController::class, 'getBannedPlayers']);
+    Route::post('/server/{serverId}/kicked', [ServerController::class, 'getKickedPlayers']);
 
     Route::post('/{account_id}/socket/start/{socket_id}', [SessionController::class, 'start']);
     Route::post('/{account_id}/socket/stop/{socket_id}', [SessionController::class, 'stop']);

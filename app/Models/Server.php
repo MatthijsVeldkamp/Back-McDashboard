@@ -20,4 +20,14 @@ class Server extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function bannedPlayers()
+    {
+        return $this->hasMany(BannedPlayer::class);
+    }
+
+    public function kickedPlayers()
+    {
+        return $this->hasMany(KickedPlayer::class);
+    }
 } 
